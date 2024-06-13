@@ -17,6 +17,9 @@ app.use('/api', searchRouter);
 const userRouter = require('./routes/user');
 app.use('/api', userRouter);
 
+const adminRouter = require('./routes/admin');
+app.use('/api', adminRouter);
+
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
 });
