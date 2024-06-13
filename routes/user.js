@@ -149,7 +149,7 @@ router.post('/buy_now/:userID', async (req, res) => {
 
         await query('COMMIT');
         res.status(200).send('Order processed successfully');
-        
+
     } catch (error) {
         await query('ROLLBACK');
         console.error(error);
@@ -158,14 +158,12 @@ router.post('/buy_now/:userID', async (req, res) => {
 
 });
 
-// Endpoint to add product to cart
 router.post('/cart/:userID/:productID', async (req, res) => {
     const userID = req.params.userID;
     const productID = req.params.productID;
     const { quantity } = req.body;
 
     try {
-        // Check product quantity
         const productQuantityResult = await query(`SELECT quantity FROM product WHERE product.productID=?`, [productID]);
         const availableQty = productQuantityResult[0].quantity;
 
@@ -190,7 +188,6 @@ router.post('/cart/:userID/:productID', async (req, res) => {
     }
 });
 
-// Endpoint to update product quantity in cart
 router.put('/cart/:userID/:productID', async (req, res) => {
     const userID = req.params.userID;
     const productID = req.params.productID;
@@ -201,17 +198,24 @@ router.put('/cart/:userID/:productID', async (req, res) => {
         const productQuantityResult = await query(`SELECT quantity FROM product WHERE product.productID=?`, [productID]);
         const availableQty = productQuantityResult[0].quantity;
 
-        if (availableQty < quantity) {
-            res.send("Can't add to cart, qty too large");
+        const cartResult = await query(`SELECT quantity FROM cart WHERE productID=? AND userID=?`, [productID, userID]);
+        if (cartResult.length === 0) {
+            res.send("Product not in cart");
         } else {
-            // Update cart quantity
-            await query(`UPDATE cart SET quantity = ? WHERE productID=? AND userID=?`, [quantity, productID, userID]);
-            await query(`UPDATE product SET quantity = quantity - ? WHERE productID = ?`, [quantity, productID]);
-            db.commit();
+            if (availableQty < quantity) {
+                res.send("Can't add to cart, qty too large");
+            } else {
+                // Update cart quantity
+                await query(`UPDATE cart SET quantity = ? WHERE productID=? AND userID=?`, [quantity, productID, userID]);
+                await query(`UPDATE product SET quantity = quantity - ? WHERE productID = ?`, [quantity, productID]);
+                await query('COMMIT', []);
 
-            res.send("Success");
+                res.send("Success");
+            }
         }
     } catch (error) {
+        await query('ROLLBACK', []);
+        console.error(error);
         res.status(500).send('Error: ' + error);
     }
 });
