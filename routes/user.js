@@ -221,30 +221,45 @@ router.put('/cart/:userID/:productID', async (req, res) => {
 });
 
 // Endpoint to cancel order
-router.delete('/order/:orderID', async (req, res) => {
+router.delete('/cancel_order/:orderID', async (req, res) => {
     const orderID = req.params.orderID;
-
+    const { userID } = req.body;
     try {
-        // Check if order exists
-        const orderResult = await query(`SELECT paymentID FROM \`order\` WHERE orderID=?`, [orderID]);
-        if (orderResult.length === 0) {
-            res.send("This order has been cancelled");
+
+        const orderUserResult = await query(`SELECT * FROM \`order\` WHERE orderID=? AND userID=?`, [orderID, userID]);
+        if (orderUserResult.length === 0) {
+            res.send("OrderID and userID do not match");
         } else {
-            // Update product quantities
-            await query(`UPDATE product, my_orders 
+            const orderResult = await query(`SELECT paymentID FROM \`order\` WHERE orderID=?`, [orderID]);
+            if (orderResult.length === 0) {
+                res.send("This order has been cancelled");
+            } else {
+                //check if delivery date is in the future
+                const deliveryDateResult = await query(`SELECT delivery_date FROM \`order\` WHERE orderID=?`, [orderID]);
+                const deliveryDate = deliveryDateResult[0].delivery_date;
+                const today = new Date();
+                if (today > deliveryDate) {
+                    res.send("Cannot cancel order after delivery date");
+                } else {
+                    await query('START TRANSACTION');
+
+                    await query(`UPDATE product, my_orders 
                          SET product.quantity = product.quantity + my_orders.quantity 
                          WHERE my_orders.orderID=? 
                          AND my_orders.productID=product.productID`, [orderID]);
-            db.commit();
 
-            // Delete payment
-            await query(`DELETE FROM payments WHERE paymentID IN (
+                    await query(`DELETE FROM payments WHERE paymentID IN (
                             SELECT paymentID FROM \`order\` WHERE orderID=?)`, [orderID]);
-            db.commit();
 
-            res.send("Success");
+                    await query('COMMIT', []);
+
+                    res.send("Success");
+                }
+            }
         }
     } catch (error) {
+        await query('ROLLBACK', []);
+        console.error(error);
         res.status(500).send('Error: ' + error);
     }
 });
