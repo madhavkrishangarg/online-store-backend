@@ -29,6 +29,32 @@ router.post('/auth_cust', async (req, res) => {
     );
 });
 
+router.post('/new_user', async (req, res) => {
+//     userID,int,NO,PRI,,auto_increment
+// first_name,varchar(20),NO,"",,""
+// last_name,varchar(20),YES,"",,""
+// user_address,varchar(50),NO,"",,""
+// email_id,varchar(20),NO,UNI,,""
+// phone_number,bigint,NO,UNI,,""
+// pass,varchar(65),NO,"",,""
+// privilege_status,varchar(10),NO,"",normal,""
+
+    const { first_name, last_name, user_address, email_id, phone_number, pass, priviledge_status } = req.body;
+
+    db.query(
+        `INSERT INTO user (first_name, last_name, user_address, email_id, phone_number, pass, privilege_status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [first_name, last_name, user_address, email_id, phone_number, pass, priviledge_status],
+        (err, results) => {
+            if (err) {
+                console.error('Database error:', err);
+                return res.status(500).send('Internal server error');
+            }
+            res.send({ userID: results.insertId });
+        }
+    );
+    db.query("Commit;")
+});
+
 router.post('/auth_admin', async (req, res) => {
     const { username, password } = req.body;
 
