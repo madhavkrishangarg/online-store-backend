@@ -40,10 +40,10 @@ router.post('/new_user', async (req, res) => {
 // privilege_status,varchar(10),NO,"",normal,""
 
     const { first_name, last_name, user_address, email_id, phone_number, pass, priviledge_status } = req.body;
-
+    const hashedPass = await bcrypt.hash(pass, 10);
     db.query(
         `INSERT INTO user (first_name, last_name, user_address, email_id, phone_number, pass, privilege_status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [first_name, last_name, user_address, email_id, phone_number, pass, priviledge_status],
+        [first_name, last_name, user_address, email_id, phone_number, hashedPass, priviledge_status],
         (err, results) => {
             if (err) {
                 console.error('Database error:', err);
