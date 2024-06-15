@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 
 router.post('/search', async (req, res) => {
+    console.log('Search request:', req.body);
     const prompt = req.body.prompt;
     const search_term = '%' + prompt + '%';
     db.query(
