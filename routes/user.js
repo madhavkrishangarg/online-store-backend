@@ -168,7 +168,7 @@ router.post('/cart/:userID/:productID', async (req, res) => {
         const availableQty = productQuantityResult[0].quantity;
 
         if (availableQty < quantity) {
-            res.send("Can't add to cart, qty too large");
+            res.status(400).send("Can't add to cart, qty too large");
         } else {
             // Calculate total cost
             const totalCostResult = await query(`SELECT price * ? AS totalCost FROM product WHERE product.productID=?`, [quantity, productID]);
@@ -179,7 +179,7 @@ router.post('/cart/:userID/:productID', async (req, res) => {
             await query(`UPDATE product SET quantity = quantity - ? WHERE productID = ?`, [quantity, productID]);
             await query('COMMIT', []);
 
-            res.send("Successfully inserted");
+            res.status(200).send("Success");
         }
     } catch (error) {
         await query('ROLLBACK', []);
@@ -200,17 +200,17 @@ router.put('/cart/:userID/:productID', async (req, res) => {
 
         const cartResult = await query(`SELECT quantity FROM cart WHERE productID=? AND userID=?`, [productID, userID]);
         if (cartResult.length === 0) {
-            res.send("Product not in cart");
+            res.status(400).send("Product not in cart");
         } else {
             if (availableQty < quantity) {
-                res.send("Can't add to cart, qty too large");
+                res.status(400).send("Can't update cart, qty too large");
             } else {
                 // Update cart quantity
                 await query(`UPDATE cart SET quantity = ? WHERE productID=? AND userID=?`, [quantity, productID, userID]);
                 await query(`UPDATE product SET quantity = quantity - ? WHERE productID = ?`, [quantity, productID]);
                 await query('COMMIT', []);
 
-                res.send("Success");
+                res.status(200).send("Success");
             }
         }
     } catch (error) {
@@ -228,18 +228,18 @@ router.delete('/cancel_order/:orderID', async (req, res) => {
 
         const orderUserResult = await query(`SELECT * FROM \`order\` WHERE orderID=? AND userID=?`, [orderID, userID]);
         if (orderUserResult.length === 0) {
-            res.send("OrderID and userID do not match");
+            res.status(400).send("Order does not exist or does not belong to user");
         } else {
             const orderResult = await query(`SELECT paymentID FROM \`order\` WHERE orderID=?`, [orderID]);
             if (orderResult.length === 0) {
-                res.send("This order has been cancelled");
+                res.status(400).send("Order does not exist");
             } else {
                 //check if delivery date is in the future
                 const deliveryDateResult = await query(`SELECT delivery_date FROM \`order\` WHERE orderID=?`, [orderID]);
                 const deliveryDate = deliveryDateResult[0].delivery_date;
                 const today = new Date();
                 if (today > deliveryDate) {
-                    res.send("Cannot cancel order after delivery date");
+                    res.status(400).send("Can't cancel order, delivery date has passed");
                 } else {
                     await query('START TRANSACTION');
 
@@ -253,7 +253,7 @@ router.delete('/cancel_order/:orderID', async (req, res) => {
 
                     await query('COMMIT', []);
 
-                    res.send("Success");
+                    res.status(200).send("Order cancelled successfully");
                 }
             }
         }
