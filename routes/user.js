@@ -54,7 +54,7 @@ router.get('/cart/:userID', async (req, res) => {
 
     try {
         const productsQuery = `
-            SELECT product_name, cart.quantity 
+            SELECT cart.productID, product_name, cart.quantity 
             FROM product 
             JOIN cart ON product.productID = cart.productID 
             WHERE userID=?`;
@@ -103,7 +103,6 @@ router.post('/buy_now/:userID', async (req, res) => {
     try {
         await query('START TRANSACTION');
 
-        // Fetch products in cart that are available
         const availableProductsQuery = `
             SELECT productID, product_name, price 
             FROM product 
@@ -116,21 +115,24 @@ router.post('/buy_now/:userID', async (req, res) => {
             )`;
         const products = await query(availableProductsQuery, [userID]);
 
-        // Insert into payments
         await query(`INSERT INTO payments(payment_mode, payment_address) VALUES(?, ?)`, [mode, address]);
 
-        // Get the latest payment ID
         const paymentIDResult = await query(`SELECT MAX(paymentID) AS paymentID FROM payments`);
         const paymentID = paymentIDResult[0].paymentID;
 
-        // Get the total cost of items in the cart
         const totalCostResult = await query(`SELECT SUM(total_cost) AS total FROM cart WHERE userID=?`, [userID]);
         const cost = totalCostResult[0].total;
 
-        // Insert into orders
-        await query(`INSERT INTO \`order\`(delivery_address, userId, order_value, delivery_date, couponID, paymentID) VALUES(?, ?, ?, CURRENT_DATE, "dbms", ?)`, [address, userID, cost, paymentID]);
+        //fetch the privilege_status of the user
+        const privilegeStatusResult = await query(`SELECT privilege_status FROM user WHERE userID=?`, [userID]);
 
-        // Insert into my_orders
+        //if privilege_status is 'pro' then deliver the order in 2 days
+        if (privilegeStatusResult[0].privilege_status === 'pro') {
+            await query(`INSERT INTO \`order\`(delivery_address, userId, order_value, delivery_date, couponID, paymentID) VALUES(?, ?, ?, DATE_ADD(CURRENT_DATE, INTERVAL 2 DAY), ?, ?)`, [address, userID, cost, coupon, paymentID]);
+        }else{
+            await query(`INSERT INTO \`order\`(delivery_address, userId, order_value, delivery_date, couponID, paymentID) VALUES(?, ?, ?, DATE_ADD(CURRENT_DATE, INTERVAL 5 DAY), ?, ?)`, [address, userID, cost, coupon, paymentID]);
+        }
+
         await query(`INSERT INTO my_orders 
                      SELECT \`order\`.orderID, productID, quantity, total_cost 
                      FROM cart, \`order\` 
@@ -138,13 +140,11 @@ router.post('/buy_now/:userID', async (req, res) => {
                      AND cart.userID=? 
                      AND orderID=(SELECT MAX(orderID) FROM \`order\`)`, [userID]);
 
-        // Update product quantities
         await query(`UPDATE product, cart 
                      SET product.quantity=product.quantity-cart.quantity 
                      WHERE cart.userID=? 
                      AND cart.productID=product.productID`, [userID]);
 
-        // Delete items from cart
         await query(`DELETE FROM cart WHERE cart.userID=?`, [userID]);
 
         await query('COMMIT');
@@ -156,6 +156,36 @@ router.post('/buy_now/:userID', async (req, res) => {
         res.status(500).send('Error: ' + error.message);
     }
 
+});
+
+router.get('/privilege/:userID', async (req, res) => {
+    // console.log("Privilege request received from userID", req.params.userID);
+    const userID = req.params.userID;
+    try {
+        const privilegeQuery = `
+            SELECT privilege_status 
+            FROM user 
+            WHERE userID=?`;
+        const results = await query(privilegeQuery, [userID]);
+        res.json(results);
+    } catch (err) {
+        res.status(500).send('Database error: ' + err);
+    }
+});
+
+router.get('/first_name/:userID', async (req, res) => {
+    // console.log("First name request received from userID", req.params.userID);
+    const userID = req.params.userID;
+    try {
+        const firstNameQuery = `
+            SELECT first_name 
+            FROM user 
+            WHERE userID=?`;
+        const results = await query(firstNameQuery, [userID]);
+        res.json(results);
+    } catch (err) {
+        res.status(500).send('Database error: ' + err);
+    }
 });
 
 router.post('/cart/:userID/:productID', async (req, res) => {
@@ -192,26 +222,48 @@ router.put('/cart/:userID/:productID', async (req, res) => {
     const userID = req.params.userID;
     const productID = req.params.productID;
     const { quantity } = req.body;
-
+    console.log(userID, productID, quantity);
     try {
-        // Check product quantity
         const productQuantityResult = await query(`SELECT quantity FROM product WHERE product.productID=?`, [productID]);
+        const cartResult = await query(`SELECT * FROM cart WHERE productID=? AND userID=?`, [productID, userID]);
         const availableQty = productQuantityResult[0].quantity;
-
-        const cartResult = await query(`SELECT quantity FROM cart WHERE productID=? AND userID=?`, [productID, userID]);
         if (cartResult.length === 0) {
             res.status(400).send("Product not in cart");
         } else {
             if (availableQty < quantity) {
                 res.status(400).send("Can't update cart, qty too large");
             } else {
-                // Update cart quantity
-                await query(`UPDATE cart SET quantity = ? WHERE productID=? AND userID=?`, [quantity, productID, userID]);
-                await query(`UPDATE product SET quantity = quantity - ? WHERE productID = ?`, [quantity, productID]);
+
+                await query(`UPDATE cart SET quantity = quantity + ? WHERE productID=? AND userID=?`, [quantity, productID, userID]);
+                await query(`UPDATE product SET quantity = quantity - ? WHERE productID = ?`, [quantity, productID])
+                await query(`DELETE FROM cart WHERE quantity=0 AND productID=? AND userID=?`, [productID, userID]);
                 await query('COMMIT', []);
 
                 res.status(200).send("Success");
             }
+        }
+    } catch (error) {
+        await query('ROLLBACK', []);
+        console.error(error);
+        res.status(500).send('Error: ' + error);
+    }
+});
+
+router.delete('/cart/:userID/:productID', async (req, res) => {
+    const userID = req.params.userID;
+    const productID = req.params.productID;
+
+    try {
+        await query('START TRANSACTION');
+
+        const cartResult = await query(`SELECT * FROM cart WHERE productID=? AND userID=?`, [productID, userID]);
+        if (cartResult.length === 0) {
+            res.status(400).send("Product not in cart");
+        } else {
+            await query(`UPDATE product SET quantity = quantity + (SELECT quantity FROM cart WHERE productID=? AND userID=?) WHERE productID=?`, [productID, userID, productID]);
+            await query(`DELETE FROM cart WHERE productID=? AND userID=?`, [productID, userID]);
+            await query('COMMIT', []);
+            res.status(200).send("Success");
         }
     } catch (error) {
         await query('ROLLBACK', []);
