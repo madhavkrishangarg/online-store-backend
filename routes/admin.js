@@ -131,4 +131,94 @@ router.post('/map_product-category', async (req, res) => {
     }
 });
 
+router.get('/olap1', async (req, res) => {      //query to get total sales and quantity of each category
+    try {
+        const olap1Query = `
+        SELECT
+    COALESCE(category.category_name, 'Total') AS category,
+    SUM(product.quantity) AS total_quantity,
+    SUM(product.price * product.quantity) AS total_sales
+FROM
+    product
+    JOIN product_category_map ON product.productID = product_category_map.productID
+    JOIN category ON category.categoryID = product_category_map.categoryID
+GROUP BY
+    category.category_name WITH ROLLUP
+ORDER BY
+    total_sales DESC;`;
+        const result = await query(olap1Query, []);
+        res.status(200).send(result);
+        // console.log(result);
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).send('Internal server error');
+    }
+}
+);
+
+router.post('/olap2', async (req, res) => {      //query to get total sales and unique customers for each month in a year
+    try {
+        const year = req.body.year;
+        const olap2Query = `
+        SELECT
+        YEAR(\`order\`.delivery_date) AS year,
+        MONTH(\`order\`.delivery_date) AS month,
+        COUNT(DISTINCT \`order\`.userId) AS unique_customers,
+        SUM(\`order\`.order_value) AS total_sales
+    FROM
+        \`order\`
+    WHERE
+        YEAR(\`order\`.delivery_date) = ?
+    GROUP BY
+        YEAR(\`order\`.delivery_date),
+        MONTH(\`order\`.delivery_date) WITH ROLLUP
+    ORDER BY
+        year ASC,
+        month ASC;`;
+
+        const result = await query(olap2Query, [year]);
+        res.status(200).send(result);
+        // console.log(result);
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).send('Internal server error');
+    }
+}
+);
+
+router.get('/olap3', async (req, res) => {      //query to get total revenue for each category in each month of a year
+    try {
+        const olap3Query =
+            `SELECT
+            category.category_name AS Category,
+            YEAR(\`order\`.delivery_date) AS Year,
+            MONTH(\`order\`.delivery_date) AS Month,
+            SUM(my_orders.cost) AS Revenue
+        FROM
+            category
+            JOIN product_category_map ON category.categoryID = product_category_map.categoryID
+            JOIN product ON product_category_map.productID = product.productID
+            JOIN my_orders ON product.productID = my_orders.productID
+            JOIN \`order\` ON my_orders.orderID = \`order\`.orderID
+        GROUP BY
+            category.category_name,
+            YEAR(\`order\`.delivery_date),
+            MONTH(\`order\`.delivery_date) WITH ROLLUP
+        ORDER BY
+            category.category_name ASC,
+            YEAR(\`order\`.delivery_date) ASC,
+            MONTH(\`order\`.delivery_date) ASC;`;
+
+        const result = await query(olap3Query, []);
+        res.status(200).send(result);
+        // console.log(result);
+    }
+    catch (error) {
+        console.error('Database error:', error);
+        res.status(500).send('Internal server error');
+    }
+}
+);
+
+
 module.exports = router;
