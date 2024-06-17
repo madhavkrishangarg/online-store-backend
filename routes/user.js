@@ -15,35 +15,77 @@ const query = (sql, params) => {
 
 router.get('/orders/:userID', async (req, res) => {
     const userID = req.params.userID;
-    console.log(userID);
+    // console.log(userID);
 
     try {
         const productsQuery = `
-            SELECT product_name, mo.quantity
+            SELECT mo.orderID, product.product_name, SUM(mo.quantity) AS total_quantity
             FROM product
             JOIN my_orders mo ON product.productID = mo.productID
-            WHERE orderID IN (
-                SELECT orderID
-                FROM \`order\`
-                JOIN user u ON u.userID = \`order\`.userId
-                WHERE \`order\`.userId=?
-            );
-        `;
+            WHERE mo.orderID IN (
+                SELECT o.orderID
+                FROM \`order\` o
+                WHERE o.userId = ?
+            )
+            GROUP BY mo.orderID, product.product_name;
+            `;
         const products = await query(productsQuery, [userID]);
 
+        // console.log(products);
+
         const totalQuery = `
-            SELECT SUM(order_value) AS total
-            FROM \`order\`
-            WHERE userID=?;
-        `;
+            SELECT SUM(o.order_value) AS total, o.orderID
+            FROM \`order\` o
+            JOIN my_orders mo ON o.orderID = mo.orderID
+            WHERE o.userID = ?
+            GROUP BY o.orderID;
+            `;
         const totalResult = await query(totalQuery, [userID]);
 
-        const response = {
-            products: products,
-            total: totalResult[0].total
-        };
+        // console.log(totalResult);
+
+        const delivery_date_query = `
+            SELECT delivery_date, orderID
+            FROM \`order\`
+            WHERE userID = ?
+            group by orderID;
+            `;
+        
+        const delivery_date_result = await query(delivery_date_query, [userID]);
+
+        const response = totalResult.map((order) => {
+            const productsInOrder = products.filter((product) => product.orderID === order.orderID);
+            const delivery_date = delivery_date_result.filter((date) => date.orderID === order.orderID);
+            return {
+                orderID: order.orderID,
+                total: order.total,
+                products: productsInOrder,
+                delivery_date: delivery_date
+            };
+        });
+
+        // console.log(response);
 
         res.json(response);
+    } catch (err) {
+        console.log(err);
+        res.status(500).send('Database error: ' + err);
+    }
+});
+
+router.get('/payment/:userID', async (req, res) => {
+    const userID = req.params.userID;
+
+    try {
+        const paymentQuery = `
+            SELECT DISTINCT \`order\`.orderID, payments.payment_mode, payments.payment_address 
+            FROM payments 
+            JOIN \`order\` ON payments.paymentID = \`order\`.paymentID 
+            JOIN my_orders ON \`order\`.orderID = my_orders.orderID
+            WHERE \`order\`.userID=?;`
+        const results = await query(paymentQuery, [userID]);
+
+        res.json(results);
     } catch (err) {
         res.status(500).send('Database error: ' + err);
     }
@@ -129,7 +171,7 @@ router.post('/buy_now/:userID', async (req, res) => {
         //if privilege_status is 'pro' then deliver the order in 2 days
         if (privilegeStatusResult[0].privilege_status === 'pro') {
             await query(`INSERT INTO \`order\`(delivery_address, userId, order_value, delivery_date, couponID, paymentID) VALUES(?, ?, ?, DATE_ADD(CURRENT_DATE, INTERVAL 2 DAY), ?, ?)`, [address, userID, cost, coupon, paymentID]);
-        }else{
+        } else {
             await query(`INSERT INTO \`order\`(delivery_address, userId, order_value, delivery_date, couponID, paymentID) VALUES(?, ?, ?, DATE_ADD(CURRENT_DATE, INTERVAL 5 DAY), ?, ?)`, [address, userID, cost, coupon, paymentID]);
         }
 
@@ -222,7 +264,7 @@ router.put('/cart/:userID/:productID', async (req, res) => {
     const userID = req.params.userID;
     const productID = req.params.productID;
     const { quantity } = req.body;
-    console.log(userID, productID, quantity);
+    // console.log(userID, productID, quantity);
     try {
         const productQuantityResult = await query(`SELECT quantity FROM product WHERE product.productID=?`, [productID]);
         const cartResult = await query(`SELECT * FROM cart WHERE productID=? AND userID=?`, [productID, userID]);
