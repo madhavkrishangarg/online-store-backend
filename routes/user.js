@@ -50,7 +50,7 @@ router.get('/orders/:userID', async (req, res) => {
             WHERE userID = ?
             group by orderID;
             `;
-        
+
         const delivery_date_result = await query(delivery_date_query, [userID]);
 
         const response = totalResult.map((order) => {
@@ -145,6 +145,21 @@ router.post('/buy_now/:userID', async (req, res) => {
     try {
         await query('START TRANSACTION');
 
+        if (coupon) {
+            const couponQuery = `
+            SELECT * 
+            FROM coupons
+            WHERE couponID=? 
+            AND expiry > CURRENT_DATE and is_used=0`;
+
+            const couponResult = await query(couponQuery, [coupon]);
+
+            if (couponResult.length === 0) {
+                await query('ROLLBACK');  // Rollback the transaction before sending response
+                return res.status(400).send("Invalid coupon");
+            }
+        }
+
         const availableProductsQuery = `
             SELECT productID, product_name, price 
             FROM product 
@@ -190,15 +205,16 @@ router.post('/buy_now/:userID', async (req, res) => {
         await query(`DELETE FROM cart WHERE cart.userID=?`, [userID]);
 
         await query('COMMIT');
-        res.status(200).send('Order processed successfully');
+        return res.status(200).send('Order processed successfully');
 
     } catch (error) {
         await query('ROLLBACK');
         console.error(error);
-        res.status(500).send('Error: ' + error.message);
+        return res.status(500).send('Error: ' + error.message);
     }
 
 });
+
 
 router.get('/privilege/:userID', async (req, res) => {
     // console.log("Privilege request received from userID", req.params.userID);
