@@ -2,10 +2,10 @@ const mysql = require('mysql2');
 require('dotenv').config();
 
 const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '12345678',
-    database: 'demo4'
+    host: process.env.RAILWAY_MYSQL_HOST,
+    user: process.env.RAILWAY_MYSQL_USER,
+    password: process.env.RAILWAY_MYSQL_PASSWORD,
+    database: process.env.RAILWAY_MYSQL_DATABASE,
 });
 
 db.connect(err => {
@@ -13,7 +13,7 @@ db.connect(err => {
         console.error('Database connection failed: ' + err.stack);
         return;
     }
-    console.log('Connected to database.');
+    console.log('Connected to Railway MySQL database.');
 });
 
 module.exports = db;
