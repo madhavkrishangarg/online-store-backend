@@ -3,7 +3,7 @@ require('dotenv').config();
 
 const db = mysql.createConnection({
     host: process.env.RAILWAY_MYSQL_HOST,
-    port: process.env.RAILWAY_MYSQL_PORT,
+    port: process.env.RAILWAY_MYSQL_PORT || NaN,
     user: process.env.RAILWAY_MYSQL_USER,
     password: process.env.RAILWAY_MYSQL_PASSWORD,
     database: process.env.RAILWAY_MYSQL_DATABASE,
@@ -14,7 +14,7 @@ db.connect(err => {
         console.error('Database connection failed: ' + err.stack);
         return;
     }
-    console.log('Connected to Railway MySQL database.');
+    console.log(`Connected to database as ID ${db.threadId}`);
 });
 
 module.exports = db;
