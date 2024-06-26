@@ -255,19 +255,25 @@ router.post('/cart/:userID/:productID', async (req, res) => {
         const productQuantityResult = await query(`SELECT quantity FROM product WHERE product.productID=?`, [productID]);
         const availableQty = productQuantityResult[0].quantity;
 
-        if (availableQty < quantity) {
-            res.status(400).send("Can't add to cart, qty too large");
+        // Check if product is already in cart
+        const cartResult = await query(`SELECT * FROM cart WHERE productID=? AND userID=?`, [productID, userID]);
+        if (cartResult.length > 0) {
+            res.status(400).send("Product already in cart");
         } else {
-            // Calculate total cost
-            const totalCostResult = await query(`SELECT price * ? AS totalCost FROM product WHERE product.productID=?`, [quantity, productID]);
-            const totalCost = totalCostResult[0].totalCost;
+            if (availableQty < quantity) {
+                res.status(400).send("Can't add to cart, qty too large");
+            } else {
+                // Calculate total cost
+                const totalCostResult = await query(`SELECT price * ? AS totalCost FROM product WHERE product.productID=?`, [quantity, productID]);
+                const totalCost = totalCostResult[0].totalCost;
 
-            // Insert into cart
-            await query(`INSERT INTO cart VALUES(?, ?, ?, ?)`, [userID, totalCost, productID, quantity]);
-            await query(`UPDATE product SET quantity = quantity - ? WHERE productID = ?`, [quantity, productID]);
-            await query('COMMIT', []);
+                // Insert into cart
+                await query(`INSERT INTO cart VALUES(?, ?, ?, ?)`, [userID, totalCost, productID, quantity]);
+                await query(`UPDATE product SET quantity = quantity - ? WHERE productID = ?`, [quantity, productID]);
+                await query('COMMIT', []);
 
-            res.status(200).send("Success");
+                res.status(200).send("Success");
+            }
         }
     } catch (error) {
         await query('ROLLBACK', []);
