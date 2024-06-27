@@ -7,7 +7,14 @@ router.post('/search', async (req, res) => {
     const prompt = req.body.prompt;
     const search_term = '%' + prompt + '%';
     db.query(
-        `select product.productID, product_name, price from product join product_category_map on product.productID = product_category_map.productID where categoryID in (select categoryID from category where category_name like ?) order by price;`, [search_term],
+        `SELECT DISTINCT product.productID, product_name, price
+FROM product
+JOIN product_category_map ON product.productID = product_category_map.productID
+LEFT JOIN category ON product_category_map.categoryID = category.categoryID
+WHERE product_name LIKE ?
+OR category.category_name LIKE ?
+ORDER BY price;
+`, [search_term],
 
         async (err, results) => {
             if (err) {
