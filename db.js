@@ -1,36 +1,43 @@
-const mysql = require('mysql2');
+const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-let db;
+let pool;
 
-function handleDisconnect() {
-    db = mysql.createConnection({
-        host: process.env.RAILWAY_MYSQL_HOST,
-        port: process.env.RAILWAY_MYSQL_PORT || NaN,
-        user: process.env.RAILWAY_MYSQL_USER,
-        password: process.env.RAILWAY_MYSQL_PASSWORD,
-        database: process.env.RAILWAY_MYSQL_DATABASE,
-    });
+async function handleDisconnect() {
+    try {
+        pool = mysql.createPool({
+            host: process.env.RAILWAY_MYSQL_HOST,
+            port: process.env.RAILWAY_MYSQL_PORT || 3306,
+            user: process.env.RAILWAY_MYSQL_USER,
+            password: process.env.RAILWAY_MYSQL_PASSWORD,
+            database: process.env.RAILWAY_MYSQL_DATABASE,
+            connectionLimit: 10,
+        });
 
-    db.connect(err => {
-        if (err) {
-            console.error('Error connecting to database:', err.stack);
-            setTimeout(handleDisconnect, 2000);
-        } else {
-            console.log(`Connected to database as ID ${db.threadId}`);
-        }
-    });
-
-    db.on('error', err => {
-        console.error('Database error:', err);
-        if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-            handleDisconnect(); // Reconnect on connection loss
-        } else {
-            throw err;
-        }
-    });
+        // Test the connection
+        const connection = await pool.getConnection();
+        console.log('Successfully connected to the database.');
+        connection.release();
+    } catch (err) {
+        console.error('Failed to connect to the database:', err);
+        setTimeout(handleDisconnect, 2000);
+    }
 }
 
 handleDisconnect();
 
-module.exports = db;
+module.exports = {
+    query: async (sql, params) => {
+        if (!pool) {
+            throw new Error('Database connection not established');
+        }
+        try {
+            const [results] = await pool.query(sql, params);
+            return results;
+        } catch (error) {
+            console.error('Database query error:', error);
+            throw error;
+        }
+    },
+    handleDisconnect,
+};

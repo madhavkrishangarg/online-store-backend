@@ -6,6 +6,8 @@ function keepAlive() {
     db.query(keepAliveQuery, (err) => {
         if (err) {
             console.error('Keep-alive query failed:', err);
+            // Attempt to reconnect
+            db.handleDisconnect();
         } else {
             console.log('Keep-alive query successful');
         }
