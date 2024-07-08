@@ -1,20 +1,19 @@
 const db = require('./db');
 
-async function keepAlive() {
+function keepAlive() {
     const keepAliveQuery = 'SELECT 1';
     
-    try {
-        await db.query(keepAliveQuery);
-        console.log('Keep-alive query successful');
-    } catch (err) {
-        console.error('Keep-alive query failed:', err);
-        // Attempt to reconnect
-        db.handleDisconnect();
-    }
+    db.query(keepAliveQuery, (err) => {
+        if (err) {
+            console.error('Keep-alive query failed:', err);
+        } else {
+            console.log('Keep-alive query successful');
+        }
+    });
 }
 
-// Run the keep-alive query every 5 minutes (adjust as needed)
-const keepAliveInterval = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+const keepAliveInterval = 2 * 60 * 1000;
 setInterval(keepAlive, keepAliveInterval);
 
 module.exports = keepAlive;
